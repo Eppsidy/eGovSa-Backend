@@ -50,23 +50,29 @@ public class AdminService {
             String serviceType,
             String searchTerm) {
         
-        // Default to sorting by createdAt (which exists in the Application entity)
-        String sortField = sortBy != null ? sortBy : "createdAt";
-        
-        // Validate sort field to prevent SQL injection and ensure column exists
-        if (!sortField.equals("createdAt") && !sortField.equals("submittedAt") && 
-            !sortField.equals("updatedAt") && !sortField.equals("status")) {
-            sortField = "createdAt";
+        try {
+            // Default to sorting by createdAt (which exists in the Application entity)
+            String sortField = sortBy != null ? sortBy : "createdAt";
+            
+            // Validate sort field to prevent SQL injection and ensure column exists
+            if (!sortField.equals("createdAt") && !sortField.equals("submittedAt") && 
+                !sortField.equals("updatedAt") && !sortField.equals("status")) {
+                sortField = "createdAt";
+            }
+            
+            Sort sort = Sort.by(Sort.Direction.DESC, sortField);
+            Pageable pageable = PageRequest.of(page, size, sort);
+            
+            // Simply get all applications with pagination
+            Page<Application> applications = applicationRepository.findAll(pageable);
+            
+            // Convert to DTOs
+            return applications.map(this::convertToAdminDto);
+        } catch (Exception e) {
+            System.err.println("Error in getAllApplications: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to fetch applications", e);
         }
-        
-        Sort sort = Sort.by(Sort.Direction.DESC, sortField);
-        Pageable pageable = PageRequest.of(page, size, sort);
-        
-        // Simply get all applications with pagination
-        Page<Application> applications = applicationRepository.findAll(pageable);
-        
-        // Convert to DTOs
-        return applications.map(this::convertToAdminDto);
     }
     
     /**
@@ -262,35 +268,53 @@ public class AdminService {
     }
     
     private AdminApplicationDto convertToAdminDto(Application application) {
-        // Get user profile for applicant details
-        Profile profile = profileRepository.findById(application.getUserId()).orElse(null);
-        
-        // Get documents
-        List<ApplicationDocument> docs = documentRepository.findByApplicationId(application.getId());
-        List<ApplicationDocumentDto> documentDtos = docs.stream()
-            .map(this::convertDocumentToDto)
-            .collect(Collectors.toList());
-        
-        AdminApplicationDto dto = new AdminApplicationDto();
-        dto.setId(application.getId());
-        dto.setUserId(application.getUserId());
-        dto.setApplicantName(profile != null ? profile.getFullName() : "Unknown");
-        dto.setApplicantEmail(profile != null ? profile.getEmail() : "");
-        dto.setApplicantPhone(profile != null ? profile.getPhone() : "");
-        dto.setApplicantIdNumber(profile != null ? profile.getIdNumber() : "");
-        dto.setServiceType(application.getServiceType());
-        dto.setReferenceNumber(application.getReferenceNumber());
-        dto.setStatus(application.getStatus());
-        dto.setCurrentStep(application.getCurrentStep());
-        dto.setApplicationData(application.getApplicationData());
-        dto.setSubmittedAt(application.getSubmittedAt());
-        dto.setExpectedCompletionDate(application.getExpectedCompletionDate());
-        dto.setCompletedAt(application.getCompletedAt());
-        dto.setCreatedAt(application.getCreatedAt());
-        dto.setUpdatedAt(application.getUpdatedAt());
-        dto.setDocuments(documentDtos);
-        
-        return dto;
+        try {
+            // Get user profile for applicant details
+            Profile profile = null;
+            try {
+                profile = profileRepository.findById(application.getUserId()).orElse(null);
+            } catch (Exception e) {
+                // Log but don't fail if profile lookup fails
+                System.err.println("Error fetching profile for user " + application.getUserId() + ": " + e.getMessage());
+            }
+            
+            // Get documents
+            List<ApplicationDocumentDto> documentDtos = List.of(); // Default to empty list
+            try {
+                List<ApplicationDocument> docs = documentRepository.findByApplicationId(application.getId());
+                documentDtos = docs.stream()
+                    .map(this::convertDocumentToDto)
+                    .collect(Collectors.toList());
+            } catch (Exception e) {
+                // Log but don't fail if document lookup fails
+                System.err.println("Error fetching documents for application " + application.getId() + ": " + e.getMessage());
+            }
+            
+            AdminApplicationDto dto = new AdminApplicationDto();
+            dto.setId(application.getId());
+            dto.setUserId(application.getUserId());
+            dto.setApplicantName(profile != null ? profile.getFullName() : "Unknown");
+            dto.setApplicantEmail(profile != null ? profile.getEmail() : "");
+            dto.setApplicantPhone(profile != null ? profile.getPhone() : "");
+            dto.setApplicantIdNumber(profile != null ? profile.getIdNumber() : "");
+            dto.setServiceType(application.getServiceType());
+            dto.setReferenceNumber(application.getReferenceNumber());
+            dto.setStatus(application.getStatus());
+            dto.setCurrentStep(application.getCurrentStep() != null ? application.getCurrentStep() : "");
+            dto.setApplicationData(application.getApplicationData() != null ? application.getApplicationData() : "{}");
+            dto.setSubmittedAt(application.getSubmittedAt() != null ? application.getSubmittedAt() : application.getCreatedAt());
+            dto.setExpectedCompletionDate(application.getExpectedCompletionDate());
+            dto.setCompletedAt(application.getCompletedAt());
+            dto.setCreatedAt(application.getCreatedAt());
+            dto.setUpdatedAt(application.getUpdatedAt());
+            dto.setDocuments(documentDtos);
+            
+            return dto;
+        } catch (Exception e) {
+            System.err.println("Error converting application " + application.getId() + " to DTO: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to convert application to DTO", e);
+        }
     }
     
     private ApplicationDocumentDto convertDocumentToDto(ApplicationDocument document) {
