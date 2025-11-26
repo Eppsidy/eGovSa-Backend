@@ -50,7 +50,16 @@ public class AdminService {
             String serviceType,
             String searchTerm) {
         
-        Sort sort = Sort.by(Sort.Direction.DESC, sortBy != null ? sortBy : "submittedAt");
+        // Default to sorting by createdAt (which exists in the Application entity)
+        String sortField = sortBy != null ? sortBy : "createdAt";
+        
+        // Validate sort field to prevent SQL injection and ensure column exists
+        if (!sortField.equals("createdAt") && !sortField.equals("submittedAt") && 
+            !sortField.equals("updatedAt") && !sortField.equals("status")) {
+            sortField = "createdAt";
+        }
+        
+        Sort sort = Sort.by(Sort.Direction.DESC, sortField);
         Pageable pageable = PageRequest.of(page, size, sort);
         
         // Simply get all applications with pagination
