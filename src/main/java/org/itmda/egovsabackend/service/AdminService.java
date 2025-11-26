@@ -53,35 +53,10 @@ public class AdminService {
         Sort sort = Sort.by(Sort.Direction.DESC, sortBy != null ? sortBy : "submittedAt");
         Pageable pageable = PageRequest.of(page, size, sort);
         
-        Page<Application> applications;
+        // Simply get all applications with pagination
+        Page<Application> applications = applicationRepository.findAll(pageable);
         
-        // Apply filters
-        if (status != null && !status.isEmpty() && serviceType != null && !serviceType.isEmpty()) {
-            applications = applicationRepository.findAll(pageable);
-            applications = applications.map(app -> {
-                if (app.getStatus().equalsIgnoreCase(status) && 
-                    app.getServiceType().toLowerCase().contains(serviceType.toLowerCase())) {
-                    return app;
-                }
-                return null;
-            });
-        } else if (status != null && !status.isEmpty()) {
-            applications = applicationRepository.findAll(pageable);
-            applications = applications.map(app -> 
-                app.getStatus().equalsIgnoreCase(status) ? app : null);
-        } else if (serviceType != null && !serviceType.isEmpty()) {
-            applications = applicationRepository.findByServiceType(serviceType)
-                .stream()
-                .skip(page * size)
-                .limit(size)
-                .collect(Collectors.collectingAndThen(
-                    Collectors.toList(),
-                    list -> new org.springframework.data.domain.PageImpl<>(list, pageable, list.size())
-                ));
-        } else {
-            applications = applicationRepository.findAll(pageable);
-        }
-        
+        // Convert to DTOs
         return applications.map(this::convertToAdminDto);
     }
     
@@ -89,20 +64,15 @@ public class AdminService {
      * Get dashboard statistics
      */
     public AdminStatisticsDto getStatistics() {
-        long total = applicationRepository.count();
-        long underReview = applicationRepository.findByUserIdAndStatus(UUID.randomUUID(), "Under Review").size();
-        long completed = applicationRepository.findByUserIdAndStatus(UUID.randomUUID(), "Completed").size();
-        long rejected = applicationRepository.findByUserIdAndStatus(UUID.randomUUID(), "Rejected").size();
-        long inProgress = applicationRepository.findByUserIdAndStatus(UUID.randomUUID(), "In Progress").size();
-        long pendingPayment = applicationRepository.findByUserIdAndStatus(UUID.randomUUID(), "Pending Payment").size();
-        
-        // More efficient way to count by status
+        // Get all applications once
         List<Application> allApps = applicationRepository.findAll();
-        underReview = allApps.stream().filter(a -> "Under Review".equals(a.getStatus())).count();
-        completed = allApps.stream().filter(a -> "Completed".equals(a.getStatus())).count();
-        rejected = allApps.stream().filter(a -> "Rejected".equals(a.getStatus())).count();
-        inProgress = allApps.stream().filter(a -> "In Progress".equals(a.getStatus())).count();
-        pendingPayment = allApps.stream().filter(a -> "Pending Payment".equals(a.getStatus())).count();
+        
+        long total = allApps.size();
+        long underReview = allApps.stream().filter(a -> "Under Review".equals(a.getStatus())).count();
+        long completed = allApps.stream().filter(a -> "Completed".equals(a.getStatus())).count();
+        long rejected = allApps.stream().filter(a -> "Rejected".equals(a.getStatus())).count();
+        long inProgress = allApps.stream().filter(a -> "In Progress".equals(a.getStatus())).count();
+        long pendingPayment = allApps.stream().filter(a -> "Pending Payment".equals(a.getStatus())).count();
         
         AdminStatisticsDto stats = new AdminStatisticsDto();
         stats.setTotalApplications(total);
